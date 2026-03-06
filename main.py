@@ -1,19 +1,19 @@
 import json
 import time
+import eventlet
 from collections import defaultdict
 
-from webob import Response
 
 from ryu.base import app_manager
 from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER
 from ryu.controller.handler import set_ev_cls
+from ryu.lib import hub
 from ryu.lib.packet import ethernet
 from ryu.lib.packet import ipv4
 from ryu.lib.packet import packet
 from ryu.lib.packet import tcp
 from ryu.ofproto import ofproto_v1_0, ofproto_v1_3
-from ryu.app.wsgi import ControllerBase, WSGIApplication, route
 
 from network.load_balancer import RoundRobinLoadBalancer
 from security.bruteforce_detector import BruteForceDetector
@@ -21,11 +21,8 @@ from security.ddos_detector import DDoSDetector
 from utils.logger import security_logger
 
 
-REST_INSTANCE_NAME = "sdn_rest_api"
-REST_BASE_PATH = "/api"
 
 class AntiBruteForceSwitch(app_manager.RyuApp):
-    # _CONTEXTS = {"wsgi": WSGIApplication}
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION, ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
@@ -63,12 +60,12 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
         )
         self.sec_logger = security_logger
 
-        # wsgi = kwargs["wsgi"]
-        # wsgi.register(SDNControllerRestAPI, {REST_INSTANCE_NAME: self})
+        # Start custom raw socket REST API in background
+        hub.spawn(self._start_custom_rest_server)
 
         self.sec_logger.log_event(
             "controller",
-            "Anti-Brute-Force Shield Active with REST API",
+            "Anti-Brute-Force Shield Active with Eventlet API",
             details={"versions": ["OpenFlow1.3", "OpenFlow1.0"]},
         )
 
@@ -327,47 +324,80 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
                                   in_port=in_port, actions=actions, data=msg.data if msg.buffer_id == ofproto.OFP_NO_BUFFER else None)
         datapath.send_msg(out)
 
+    def _start_custom_rest_server(self, port=8080):
+        try:
+            server = eventlet.listen(('0.0.0.0', port))
+            self.sec_logger.log_event("api", "Starting eventlet raw API server on port "+str(port))
+            while True:
+                client, addr = server.accept()
+                eventlet.spawn(self._handle_api_request, client)
+        except Exception as e:
+            self.sec_logger.log_event("api_error", str(e), severity="error")
 
-class SDNControllerRestAPI(ControllerBase):
-    def __init__(self, req, link, data, **config):
-        super(SDNControllerRestAPI, self).__init__(req, link, data, **config)
-        self.sdn_app = data[REST_INSTANCE_NAME]
+    def _handle_api_request(self, client):
+        try:
+            data = client.recv(4096).decode('utf-8', errors='ignore')
+            if not data:
+                return
+            lines = data.split('\r\n')
+            if not lines:
+                return
+            req_line = lines[0].split(' ')
+            if len(req_line) < 2:
+                return
+            method, path = req_line[0], req_line[1]
 
-    @route("network_status", REST_BASE_PATH + "/status", methods=["GET"])
-    def network_status(self, req, **kwargs):
-        body = json.dumps(self.sdn_app.get_status())
-        return Response(content_type="application/json", body=body)
+            response = {}
+            status = "200 OK"
 
-    @route("attacks", REST_BASE_PATH + "/attacks", methods=["GET"])
-    def attacks(self, req, **kwargs):
-        body = json.dumps(
-            [
-                self.sdn_app._format_event(event)
-                for event in self.sdn_app.sec_logger.get_recent_attacks(limit=100)
-            ]
-        )
-        return Response(content_type="application/json", body=body)
+            if path == '/api/status' and method == 'GET':
+                response = self.get_status()
+            elif path == '/api/attacks' and method == 'GET':
+                response = [self._format_event(e) for e in self.sec_logger.get_recent_attacks(limit=100)]
+            elif path == '/api/block_ip' and method == 'POST':
+                try:
+                    body_start = data.find('\r\n\r\n') + 4
+                    if body_start >= 4:
+                        body_text = data[body_start:]
+                        import json
+                        body = json.loads(body_text) if body_text.strip() else {}
+                        ip = body.get('ip')
+                        duration = int(body.get('duration', 120))
+                        if ip:
+                            self.block_ip(ip, duration=duration, reason="api")
+                            response = {"status": "ok", "blocked_ip": ip}
+                        else:
+                            status = "400 Bad Request"
+                            response = {"error": "missing ip field"}
+                    else:
+                        status = "400 Bad Request"
+                        response = {"error": "missing body"}
+                except Exception as e:
+                    status = "400 Bad Request"
+                    response = {"error": str(e)}
+            elif path == '/api/load_balancer/enable' and method == 'POST':
+                self.enable_load_balancer()
+                response = {"status": "enabled"}
+            elif path == '/api/load_balancer/disable' and method == 'POST':
+                self.disable_load_balancer()
+                response = {"status": "disabled"}
+            elif path == '/health' and method == 'GET':
+                response = {"status": "ok"}
+            else:
+                status = "404 Not Found"
+                response = {"error": "not found"}
 
-    @route("block_ip", REST_BASE_PATH + "/block_ip", methods=["POST"])
-    def block_ip(self, req, **kwargs):
-        payload = req.json if req.body else {}
-        src_ip = payload.get("ip")
-        duration = int(payload.get("duration", 120))
-        if not src_ip:
-            return Response(status=400, body="missing ip field")
-
-        self.sdn_app.block_ip(src_ip, duration=duration, reason="api")
-        return Response(
-            content_type="application/json",
-            body=json.dumps({"status": "ok", "blocked_ip": src_ip}),
-        )
-
-    @route("enable_lb", REST_BASE_PATH + "/load_balancer/enable", methods=["POST"])
-    def enable_load_balancer(self, req, **kwargs):
-        self.sdn_app.enable_load_balancer()
-        return Response(content_type="application/json", body=json.dumps({"status": "enabled"}))
-
-    @route("disable_lb", REST_BASE_PATH + "/load_balancer/disable", methods=["POST"])
-    def disable_load_balancer(self, req, **kwargs):
-        self.sdn_app.disable_load_balancer()
-        return Response(content_type="application/json", body=json.dumps({"status": "disabled"}))
+            import json
+            res_body = json.dumps(response)
+            res_headers = (
+                "HTTP/1.1 " + status + "\r\n"
+                "Content-Type: application/json\r\n"
+                "Access-Control-Allow-Origin: *\r\n"
+                "Content-Length: " + str(len(res_body)) + "\r\n"
+                "Connection: close\r\n\r\n"
+            )
+            client.sendall((res_headers + res_body).encode('utf-8'))
+        except Exception as e:
+            pass
+        finally:
+            client.close()
