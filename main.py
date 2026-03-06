@@ -25,7 +25,7 @@ REST_INSTANCE_NAME = "sdn_rest_api"
 REST_BASE_PATH = "/api"
 
 class AntiBruteForceSwitch(app_manager.RyuApp):
-    _CONTEXTS = {"wsgi": WSGIApplication}
+    # _CONTEXTS = {"wsgi": WSGIApplication}
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION, ofproto_v1_0.OFP_VERSION]
 
     def __init__(self, *args, **kwargs):
@@ -63,8 +63,8 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
         )
         self.sec_logger = security_logger
 
-        wsgi = kwargs["wsgi"]
-        wsgi.register(SDNControllerRestAPI, {REST_INSTANCE_NAME: self})
+        # wsgi = kwargs["wsgi"]
+        # wsgi.register(SDNControllerRestAPI, {REST_INSTANCE_NAME: self})
 
         self.sec_logger.log_event(
             "controller",
