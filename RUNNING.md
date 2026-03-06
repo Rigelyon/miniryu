@@ -40,7 +40,7 @@ sudo apt-get install mininet
 From project root:
 
 ```bash
-ryu-manager main.py --wsapi-port 8080
+ryu-manager main.py --ofp-tcp-listen-port 6633 --wsapi-port 8080
 ```
 
 Ryu REST endpoints exposed by this project:
@@ -53,17 +53,27 @@ Ryu REST endpoints exposed by this project:
 
 ## 3. Run Mininet Topology
 
-Example with OpenFlow 1.3 switch:
+Universal command (recommended first try):
 
 ```bash
-sudo mn --topo single,3 --controller remote,ip=127.0.0.1,port=6633 --switch ovsk,protocols=OpenFlow13
+sudo mn --controller=remote,ip=127.0.0.1 --topo=single,3
 ```
 
-For OpenFlow 1.0 testing:
+If controller does not connect on old VM, use explicit OpenFlow 1.0 + port 6633:
 
 ```bash
 sudo mn --topo single,3 --controller remote,ip=127.0.0.1,port=6633 --switch ovsk,protocols=OpenFlow10
 ```
+
+Quick verification in Mininet CLI:
+
+```bash
+sh ovs-vsctl get-controller s1
+```
+
+Expected output should include:
+
+- `tcp:127.0.0.1:6633`
 
 ## 4. Run Flask Dashboard
 

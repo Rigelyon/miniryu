@@ -61,12 +61,12 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
                 {"name": "server-2", "ip": "10.0.0.3", "port": 3},
             ]
         )
-        self.logger = security_logger
+        self.sec_logger = security_logger
 
         wsgi = kwargs["wsgi"]
         wsgi.register(SDNControllerRestAPI, {REST_INSTANCE_NAME: self})
 
-        self.logger.log_event(
+        self.sec_logger.log_event(
             "controller",
             "Anti-Brute-Force Shield Active with REST API",
             details={"versions": ["OpenFlow1.3", "OpenFlow1.0"]},
@@ -78,7 +78,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
         self.datapaths[datapath.id] = datapath
-        self.logger.log_event(
+        self.sec_logger.log_event(
             "switch_connected",
             "Switch connected to controller",
             details={"dpid": datapath.id, "of_version": datapath.ofproto.OFP_VERSION},
@@ -129,7 +129,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
             self.add_flow(datapath, 120, match, [], hard_timeout=duration)
 
         self.blocked_ips.add(src_ip)
-        self.logger.log_event(
+        self.sec_logger.log_event(
             "blocked_ip",
             "Manually blocked source IP",
             severity="warning",
@@ -138,11 +138,11 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
 
     def enable_load_balancer(self):
         self.load_balancer.enable()
-        self.logger.log_event("load_balance", "Load balancer enabled")
+        self.sec_logger.log_event("load_balance", "Load balancer enabled")
 
     def disable_load_balancer(self):
         self.load_balancer.disable()
-        self.logger.log_event("load_balance", "Load balancer disabled")
+        self.sec_logger.log_event("load_balance", "Load balancer disabled")
 
     @staticmethod
     def _format_event(event):
@@ -186,11 +186,11 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
             "blocked_ip_list": sorted(self.blocked_ips),
             "detected_attacks": [
                 self._format_event(event)
-                for event in self.logger.get_recent_attacks(limit=100)
+                for event in self.sec_logger.get_recent_attacks(limit=100)
             ],
             "alerts": [
                 self._format_event(event)
-                for event in self.logger.get_recent_events(limit=100)
+                for event in self.sec_logger.get_recent_events(limit=100)
             ],
             "load_balancer": {
                 "enabled": self.load_balancer.enabled,
@@ -212,6 +212,10 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
 
         pkt = packet.Packet(msg.data)
         eth = pkt.get_protocol(ethernet.ethernet)
+        
+        # DEBUG LOGGING FOR PACKET_IN
+        self.logger.debug("packet_in: dpid=%s in_port=%s src=%s dst=%s", datapath.id, in_port, eth.src if eth else "none", eth.dst if eth else "none")
+
         if eth.ethertype == 0x88cc: return
 
         dst = eth.dst
@@ -237,7 +241,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
 
             if self.ddos_detector.detect_ddos(ip_pkt.src):
                 if ip_pkt.src not in self.blocked_ips:
-                    self.logger.log_event(
+                    self.sec_logger.log_event(
                         "ddos",
                         "DDoS traffic threshold exceeded",
                         severity="warning",
@@ -247,7 +251,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
                         datapath,
                         ip_pkt.src,
                         add_flow_func=self.add_flow,
-                        logger=self.logger,
+                        logger=self.sec_logger,
                         hard_timeout=30,
                     )
                     self.blocked_ips.add(ip_pkt.src)
@@ -262,7 +266,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
                         client_ip=ip_pkt.src,
                         vip_ip=self.LOAD_BALANCER_VIP,
                         server=server,
-                        logger=self.logger,
+                        logger=self.sec_logger,
                     )
 
                     out_port = int(server.get("port", ofproto.OFPP_FLOOD))
@@ -291,7 +295,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
                 suspicious = self.bruteforce_detector.detect_bruteforce(src_ip, now=curr)
                 attempt_count = self.bruteforce_detector.get_attempt_count(src_ip)
 
-                self.logger.log_event(
+                self.sec_logger.log_event(
                     "ssh_attempt",
                     "Observed SSH connection attempt",
                     details={
@@ -303,7 +307,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
 
                 if suspicious:
                     if src_ip not in self.blocked_ips:
-                        self.logger.log_event(
+                        self.sec_logger.log_event(
                             "bruteforce",
                             "Brute-force pattern detected",
                             severity="warning",
@@ -313,7 +317,7 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
                             datapath,
                             src_ip,
                             add_flow_func=self.add_flow,
-                            logger=self.logger,
+                            logger=self.sec_logger,
                         )
                         self.blocked_ips.add(src_ip)
                     return
@@ -348,7 +352,7 @@ class SDNControllerRestAPI(ControllerBase):
         body = json.dumps(
             [
                 self.sdn_app._format_event(event)
-                for event in self.sdn_app.logger.get_recent_attacks(limit=100)
+                for event in self.sdn_app.sec_logger.get_recent_attacks(limit=100)
             ]
         )
         return Response(content_type="application/json", body=body)

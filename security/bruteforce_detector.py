@@ -5,7 +5,7 @@ import time
 from ryu.ofproto import ofproto_v1_0, ofproto_v1_3
 
 
-class BruteForceDetector:
+class BruteForceDetector(object):
     """Detects repeated connection attempts in a short window."""
 
     def __init__(self, threshold=5, window_seconds=30, block_time=60):

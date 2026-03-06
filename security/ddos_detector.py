@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 from ryu.ofproto import ofproto_v1_0, ofproto_v1_3
 
 
-class DDoSDetector:
+class DDoSDetector(object):
     """Tracks packet rates and flags sources above a packets/sec threshold."""
 
     def __init__(self, packets_per_second_threshold=1000, window_seconds=1.0):

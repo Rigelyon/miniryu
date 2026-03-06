@@ -4,7 +4,7 @@ import time
 from collections import deque
 
 
-class SecurityEventLogger:
+class SecurityEventLogger(object):
     """Thread-safe logger that keeps recent in-memory events for dashboards."""
 
     def __init__(self, name="sdn-security", max_events=500):

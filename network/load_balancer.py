@@ -3,7 +3,7 @@ import threading
 from ryu.ofproto import ofproto_v1_3
 
 
-class RoundRobinLoadBalancer:
+class RoundRobinLoadBalancer(object):
     """Simple round-robin server selector with optional flow installation."""
 
     def __init__(self, servers=None):
