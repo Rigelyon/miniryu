@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SDN Dashboard</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="dashboard-page">
+  <header class="topbar">
+    <div>
+      <h1>SDN Security Dashboard</h1>
+      <p class="subtitle">Live controller telemetry and mitigation controls</p>
+    </div>
+    <div class="topbar-actions">
+      <button id="enableLbBtn">Enable Load Balancer</button>
+      <button id="disableLbBtn" class="secondary">Disable Load Balancer</button>
+      <a class="logout" href="{{ url_for('web.logout') }}">Logout</a>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="panel">
+      <h2>Traffic Stats</h2>
+      <div class="metric-row">
+        <div class="metric">
+          <span>Packet Count</span>
+          <strong id="packetCount">0</strong>
+        </div>
+        <div class="metric">
+          <span>Bandwidth (Mbps)</span>
+          <strong id="bandwidth">0</strong>
+        </div>
+      </div>
+      <canvas id="trafficChart"></canvas>
+    </section>
+
+    <section class="panel">
+      <h2>Attack Timeline</h2>
+      <canvas id="attackChart"></canvas>
+    </section>
+
+    <section class="panel">
+      <h2>Server Load Distribution</h2>
+      <canvas id="serverChart"></canvas>
+    </section>
+
+    <section class="panel">
+      <h2>Connected Hosts</h2>
+      <ul id="hostsList" class="list"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>Blocked IP List</h2>
+      <ul id="blockedList" class="list"></ul>
+      <div class="manual-block">
+        <input id="manualIp" placeholder="e.g. 10.0.0.9">
+        <button id="blockIpBtn">Block IP</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Alert Notifications</h2>
+      <ul id="alertsList" class="list"></ul>
+    </section>
+
+    <section class="panel full-width">
+      <h2>Switch Statistics</h2>
+      <ul id="switchList" class="list"></ul>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
