@@ -89,19 +89,10 @@ class AntiBruteForceSwitch(app_manager.RyuApp):
             actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, ofproto.OFPCML_NO_BUFFER)]
             self.add_flow(datapath, 0, match, actions)
         else:
-            # Ensure OF1.0 switches send enough bytes to controller on table miss.
-            config = parser.OFPSetConfig(
-                datapath=datapath,
-                flags=ofproto.OFPC_FRAG_NORMAL,
-                miss_send_len=0xFFFF,
-            )
-            datapath.send_msg(config)
-
             match = parser.OFPMatch()
-            try:
-                actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER, 0xFFFF)]
-            except TypeError:
-                actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
+            # OVS 1.11.0 on legacy VM doesn't handle OFPActionOutput byte limits gracefully from Python structs.
+            # Using bare minimum implementation for OF 1.0 Table-miss.
+            actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER)]
             self.add_flow(datapath, 0, match, actions)
 
     def add_flow(self, datapath, priority, match, actions, hard_timeout=0):
